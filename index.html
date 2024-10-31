@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watchity</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 2em;
+            margin: 0 0 20px;
+        }
+        #camera-preview {
+            border-radius: 10px;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 600px;
+            justify-content: center;
+        }
+        button, select {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 10px;
+            background-color: black;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            max-width: 150px;
+        }
+        button:disabled {
+            background-color: gray;
+            cursor: not-allowed;
+        }
+        .results {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .result-item {
+            width: 100%;
+            max-width: 200px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5em;
+            }
+            button, select {
+                font-size: 14px;
+                max-width: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Watchity</h1>
+    <video id="camera-preview" autoplay playsinline></video>
+    <div class="buttons">
+        <select id="camera-options"></select>
+        <button id="take-photo">Take Photo</button>
+        <button id="start-recording">Record Video</button>
+    </div>
+    <div class="results" id="results"></div>
+
+    <script>
+        const video = document.getElementById('camera-preview');
+        const cameraOptions = document.getElementById('camera-options');
+        const takePhotoButton = document.getElementById('take-photo');
+        const startRecordingButton = document.getElementById('start-recording');
+        const results = document.getElementById('results');
+        
+        let currentStream;
+        let mediaRecorder;
+        let chunks = [];
+        let isRecording = false;
+
+        async function getCameraStream(deviceId = null) {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            const constraints = {
+                video: deviceId ? { deviceId: { exact: deviceId } } : true,
+            };
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = currentStream;
+        }
+
+        async function populateCameraOptions() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            cameraOptions.innerHTML = ''; // Clear existing options
+            videoDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${cameraOptions.length + 1}`;
+                cameraOptions.appendChild(option);
+            });
+            cameraOptions.addEventListener('change', () => getCameraStream(cameraOptions.value));
+        }
+
+        function takePhoto() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL('image/png');
+            img.className = 'result-item';
+            results.appendChild(img);
+        }
+
+        function startRecording() {
+            if (isRecording) {
+                mediaRecorder.stop();
+                startRecordingButton.textContent = 'Record Video';
+                isRecording = false;
+            } else {
+                mediaRecorder = new MediaRecorder(currentStream);
+                mediaRecorder.ondataavailable = event => chunks.push(event.data);
+                mediaRecorder.onstop = () => {
+                    const videoBlob = new Blob(chunks, { type: 'video/mp4' });
+                    chunks = [];
+                    const videoElement = document.createElement('video');
+                    videoElement.src = URL.createObjectURL(videoBlob);
+                    videoElement.controls = true;
+                    videoElement.className = 'result-item';
+                    results.appendChild(videoElement);
+                };
+                mediaRecorder.start();
+                startRecordingButton.textContent = 'Stop Recording';
+                isRecording = true;
+            }
+        }
+
+        takePhotoButton.addEventListener('click', takePhoto);
+        startRecordingButton.addEventListener('click', startRecording);
+
+        populateCameraOptions();
+        getCameraStream();
+    </script>
+</body>
+</html>
